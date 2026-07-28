@@ -358,6 +358,7 @@ table.stbl td:first-child{text-align:left;font-weight:500;}
     <div class="app-sub" id="header-sub">VJBL tracker</div>
   </div>
   <div style="display:flex;align-items:center;gap:8px;">
+    <button class="theme-toggle" id="rv-toggle-btn" onclick="toggleReviewVideo()">🎥 Video</button>
     <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()">☀️ Light</button>
     <span class="badge badge-idle" id="status-badge">Idle</span>
   </div>
@@ -1483,7 +1484,7 @@ function getTimestamp(cg){
 }
 function addEvent(type,data){
   const cg=state.currentGame;if(!cg)return;if(!cg.timeline)cg.timeline=[];
-  const idx=cg.timeline.length;cg.timeline.push({id:Date.now()+idx,ts:getTimestamp(cg),q:cg.quarter,isDom:cg.gameType==='domestic',type,data,scoreHome:cg.scoreHome,scoreAway:cg.scoreAway});return idx;
+  const idx=cg.timeline.length;cg.timeline.push({id:Date.now()+idx,ts:getTimestamp(cg),q:cg.quarter,isDom:cg.gameType==='domestic',type,data,scoreHome:cg.scoreHome,scoreAway:cg.scoreAway,vo:(typeof getVideoOffset==='function'?getVideoOffset():null),vs:(typeof getVideoSegment==='function'?getVideoSegment():null)});return idx;
 }
 
 // ── RENDER ────────────────────────────────────────────
@@ -2927,7 +2928,7 @@ function exportTimelineCSV(gameIdxOverride){
     qend:ev=>'End of '+(isDom?'H':'Q')+(ev.q||''),
     start:ev=>ev.data.label||'Game started'
   };
-  const rows=['event_id,quarter,period_label,time_remaining_secs,elapsed_secs,event_type,player,description,score_home,score_away'];
+  const rows=['event_id,quarter,period_label,time_remaining_secs,elapsed_secs,event_type,player,description,score_home,score_away,video_offset_secs,video_segment'];
   source.timeline.forEach((ev,i)=>{
     const q=ev.q||1;
     const periodLabel=(isDom?'H':'Q')+q;
@@ -2946,7 +2947,9 @@ function exportTimelineCSV(gameIdxOverride){
       i+1,q,periodLabel,remainingSecs,elapsedSecs,ev.type,
       '"'+player.replace(/"/g,'""')+'"',
       '"'+desc.replace(/"/g,'""')+'"',
-      ev.scoreHome||0,ev.scoreAway||0
+      ev.scoreHome||0,ev.scoreAway||0,
+      (ev.vo!=null?ev.vo:''),
+      (ev.vs!=null?ev.vs:'')
     ].join(','));
   });
   const csv=rows.join('\n');
@@ -3785,6 +3788,92 @@ function quickLoadTeam(){
   const status=document.getElementById('ob-quickload-status');
   if(status)status.textContent='Connecting to cloud...';
   joinExistingTeam();
+}
+</script>
+
+<!-- REVIEW VIDEO PANEL (captures video_offset_secs + video_segment at coding time) -->
+<style>
+.review-video-panel{position:fixed;right:10px;bottom:10px;z-index:400;width:320px;max-width:calc(100vw - 20px);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);box-shadow:0 4px 16px rgba(0,0,0,0.35);font-family:'DM Sans',sans-serif;overflow:hidden;}
+.review-video-panel .rv-header{padding:9px 12px;font-size:12px;font-weight:600;color:var(--text);background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:space-between;}
+.review-video-panel .rv-status{font-size:10px;color:var(--muted);font-weight:500;}
+.review-video-panel .rv-body{padding:10px 12px;display:none;}
+.review-video-panel.expanded .rv-body{display:block;}
+.review-video-panel video{width:100%;border-radius:6px;background:#000;max-height:220px;display:block;margin-top:8px;}
+.review-video-panel input[type=file]{width:100%;font-size:11px;color:var(--muted);}
+.review-video-panel .rv-hint{font-size:10px;color:var(--muted);margin-top:6px;line-height:1.4;}
+.review-video-panel .rv-segments{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
+.review-video-panel .rv-seg-btn{font-size:11px;font-weight:600;padding:5px 10px;border-radius:20px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;}
+.review-video-panel .rv-seg-btn.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);}
+.review-video-panel .rv-add-label{font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:block;}
+</style>
+<div class="review-video-panel" id="review-video-panel">
+  <div class="rv-header" id="rv-header" onclick="toggleReviewVideo()">
+    <span>🎥 Review Video</span>
+    <span class="rv-status" id="rv-status">Not loaded</span>
+  </div>
+  <div class="rv-body" id="rv-body">
+    <div class="rv-segments" id="rv-segments"></div>
+    <span class="rv-add-label">Add video part (e.g. Part 1 = Q1-Q3, Part 2 = Q4)</span>
+    <input type="file" id="rv-file-input" accept="video/*" multiple onchange="addReviewSegments(event)">
+    <video id="review-video" controls playsinline></video>
+    <div class="rv-hint">Load every file this game was split across. Switch the active part using the tabs above right when you cross into the next file. Every event captures both the video position AND which part is active, so clips stay correct across the split.</div>
+  </div>
+</div>
+<script>
+let reviewVideoReady=false;
+let videoSegments=[];
+let activeSegmentIndex=-1;
+function toggleReviewVideo(){
+  const p=document.getElementById('review-video-panel');
+  if(p)p.classList.toggle('expanded');
+}
+function addReviewSegments(e){
+  const files=Array.from((e.target&&e.target.files)||[]);
+  files.forEach(function(f){
+    videoSegments.push({name:f.name,url:URL.createObjectURL(f),lastTime:0});
+  });
+  if(e.target)e.target.value='';
+  renderSegmentTabs();
+  if(activeSegmentIndex<0&&videoSegments.length)activateSegment(0);
+  updateRvStatus();
+}
+function renderSegmentTabs(){
+  const wrap=document.getElementById('rv-segments');
+  if(!wrap)return;
+  wrap.innerHTML=videoSegments.map(function(s,i){
+    return '<button type="button" class="rv-seg-btn'+(i===activeSegmentIndex?' active':'')+'" onclick="activateSegment('+i+')">Part '+(i+1)+(i===activeSegmentIndex?' ●':'')+'</button>';
+  }).join('');
+}
+function activateSegment(idx){
+  const v=document.getElementById('review-video');
+  if(!v||!videoSegments[idx])return;
+  if(activeSegmentIndex>=0&&videoSegments[activeSegmentIndex]&&!isNaN(v.currentTime)){
+    videoSegments[activeSegmentIndex].lastTime=v.currentTime;
+  }
+  activeSegmentIndex=idx;
+  const seg=videoSegments[idx];
+  v.src=seg.url;
+  v.onloadedmetadata=function(){v.currentTime=seg.lastTime||0;};
+  reviewVideoReady=true;
+  renderSegmentTabs();
+  updateRvStatus();
+  const p=document.getElementById('review-video-panel');
+  if(p)p.classList.add('expanded');
+}
+function updateRvStatus(){
+  const s=document.getElementById('rv-status');
+  if(!s)return;
+  if(!videoSegments.length){s.textContent='Not loaded';return;}
+  s.textContent='Part '+(activeSegmentIndex+1)+' of '+videoSegments.length+' active';
+}
+function getVideoOffset(){
+  if(!reviewVideoReady||activeSegmentIndex<0)return null;
+  const v=document.getElementById('review-video');
+  if(!v||isNaN(v.currentTime))return null;
+  return Math.round(v.currentTime*10)/10;
+}
+function getVideoSegment(){
+  return activeSegmentIndex>=0?(activeSegmentIndex+1):null;
 }
 </script>
 </body>

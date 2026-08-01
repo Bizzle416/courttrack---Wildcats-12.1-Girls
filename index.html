@@ -668,7 +668,6 @@ table.stbl td:first-child{text-align:left;font-weight:500;}
 
 <!-- SEASON -->
 <div id="screen-season" class="screen">
-  <div id="sync-status-bar" style="display:none;background:var(--amber-bg);border:1.5px solid rgba(217,119,6,0.4);border-radius:var(--rs);padding:9px 14px;margin-bottom:8px;align-items:center;gap:10px;"><span style="font-size:12px;font-weight:700;color:var(--amber);" id="sync-status-label"></span><button class="btn btn-amber" style="padding:5px 12px;font-size:12px;margin-left:auto;" onclick="syncAllToCloud()">Sync now</button></div>
   <div id="season-record-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;margin-bottom:10px;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
     <div style="font-size:13px;font-weight:700;color:var(--text);" id="wl-record">—</div>
     <div style="width:1px;height:20px;background:var(--border2);"></div>
@@ -2011,8 +2010,7 @@ function endGame(){
   cg.oppSummary=oppSum;
   const saved={...cg};state.games.push(saved);state.games.sort((a,b)=>parseDateStr(b.date)-parseDateStr(a.date));
   state.currentGame=null;actionLog=[];oppScoreLog=[];oppActionLog=[];oppStatLog=[];selectedPid=null;selectedOppPid=null;pendingShotHome=null;pendingShotOpp=null;pendingStarters=new Set();pendingOppRoster=[];pendingOppStarters=new Set();currentGameTab='home';isFilmed=true;isShotClock=DEFAULT_SHOT_CLOCK;const _pm=document.getElementById('g-period-mins');if(_pm)_pm.value=String(DEFAULT_PERIOD_MINS);updateVjblFormatLabel();
-  markGameUnsynced(String(saved.id));
-  save();render();renderStarterGrid();renderOppPreRoster();showScreen('season',document.getElementById('tab-btn-season'));updateSyncStatusBar();
+  save();render();renderStarterGrid();renderOppPreRoster();showScreen('season',document.getElementById('tab-btn-season'));
   if(sbOk())syncGameToCloud(saved);
 }
 function parseDateStr(d){if(!d)return 0;try{const p=d.split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}}
@@ -3353,32 +3351,10 @@ function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'
 function importData(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.players)throw new Error();if(!confirm('Replace all current data?'))return;if(d._starters){pendingStarters=new Set(d._starters.map(Number));delete d._starters;}state=d;if(!state.config)state.config=defaultConfig();save();showApp();render();renderStarterGrid();alert('Restored.');}catch(err){alert('Invalid backup file.');}};reader.readAsText(file);e.target.value='';}
 async function syncGameToCloud(game){
   try{const r=await sbSaveGame(game);
-  if(r!==null){showToast('\u2713 Saved to cloud');markGameSynced(String(game.id));}
-  else showToast('\u26a0 Cloud sync failed — use Sync now on Season tab');
-  }catch(e){showToast('\u26a0 Cloud sync error — use Sync now on Season tab');}
-  if(typeof updateSyncStatusBar==='function')updateSyncStatusBar();
+  if(r!==null)showToast('\u2713 Saved to cloud');
+  else showToast('\u26a0 Cloud sync failed');
+  }catch(e){showToast('\u26a0 Cloud sync failed');}
 }
-function markGameUnsynced(gameId){
-  try{const k=APP_KEY+'_unsynced',arr=JSON.parse(localStorage.getItem(k)||'[]');
-  if(!arr.includes(String(gameId)))arr.push(String(gameId));
-  localStorage.setItem(k,JSON.stringify(arr));}catch(e){}}
-function markGameSynced(gameId){
-  try{const k=APP_KEY+'_unsynced',arr=JSON.parse(localStorage.getItem(k)||'[]');
-  localStorage.setItem(k,JSON.stringify(arr.filter(id=>id!==String(gameId))));}catch(e){}}
-function updateSyncStatusBar(){
-  const bar=document.getElementById('sync-status-bar'),lbl=document.getElementById('sync-status-label');
-  if(!bar||!lbl)return;if(!sbOk()){bar.style.display='none';return;}
-  try{const ids=JSON.parse(localStorage.getItem(APP_KEY+'_unsynced')||'[]');
-  if(!ids.length){bar.style.display='none';return;}
-  bar.style.display='flex';
-  lbl.textContent='\u26a0 '+ids.length+' game'+(ids.length===1?'':'s')+' not confirmed synced to cloud';
-  }catch(e){bar.style.display='none';}}
-async function syncAllToCloud(){
-  if(!sbOk()){showToast('\u26a0 No cloud credentials configured');return;}
-  showToast('Syncing...');let ok=0,fail=0;
-  for(const g of state.games){const r=await sbSaveGame(g);
-  if(r!==null){ok++;markGameSynced(String(g.id));}else fail++;}
-  updateSyncStatusBar();showToast(ok+' synced'+(fail?' — '+fail+' failed':''));}
 function autoRemapPlayerIds(cloudGames){
   // Find a game with summary data to detect what IDs the cloud uses
   const sampleGame=cloudGames.find(g=>g.summary&&g.summary.stats);

@@ -456,11 +456,6 @@ table.stbl td:first-child{text-align:left;font-weight:500;}
   <div class="to-banner" id="to-banner">TIMEOUT — <span id="to-team"></span></div>
   <div class="to-banner" id="reopen-banner" style="background:var(--red-bg);border-color:rgba(220,38,38,0.35);color:var(--red);display:none;">REPLAY SESSION - <span id="reopen-game-label"></span><button onclick="endReopenSession()" style="margin-left:12px;padding:4px 12px;border-radius:6px;border:1px solid rgba(220,38,38,0.4);background:var(--red);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:DM Sans,sans-serif;">End &amp; Save</button></div>
 
-  <!-- Team switcher tabs - legacy, kept in DOM for JS compatibility but no longer used (both teams shown at once) -->
-  <div id="game-tab-switcher" style="display:none;gap:0;margin-bottom:10px;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border2);">
-    <button id="game-tab-home" onclick="setGameTab('home')" style="flex:1;padding:10px;font-size:13px;font-weight:600;border:none;background:var(--accent);color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;">🏠 Our Team</button>
-    <button id="game-tab-opp" onclick="setGameTab('opp')" style="flex:1;padding:10px;font-size:13px;font-weight:600;border:none;background:var(--surface2);color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;">🔴 Opposition</button>
-  </div>
 
   <!-- SPLIT VIEW — both teams visible at once, no tab switching -->
   <div class="dual-grid" id="dual-grid">
@@ -507,7 +502,6 @@ table.stbl td:first-child{text-align:left;font-weight:500;}
               <button class="action-btn foul-btn" onclick="logAction('foul')" style="grid-column:1/-1;">FOUL<div class="abl">Personal foul</div></button>
             </div><!-- /action-grid-v -->
           </div><!-- /action-panel -->
-          <div id="last-actions-list" style="margin-top:4px;display:none;"></div>
         </div><!-- /action-card -->
       </div><!-- /court-action-row -->
       <div class="card shot-log-card" id="shot-log-home">
@@ -581,7 +575,6 @@ table.stbl td:first-child{text-align:left;font-weight:500;}
               <button class="action-btn foul-btn" onclick="logOppAction('foul')" style="grid-column:1/-1;">FOUL<div class="abl">Personal foul</div></button>
             </div><!-- /action-grid-v -->
           </div><!-- /action-panel -->
-          <div id="opp-last-actions-list" style="margin-top:4px;display:none;"></div>
         </div><!-- /action-card -->
       </div><!-- /court-action-row -->
       <div class="card shot-log-card" id="shot-log-opp">
@@ -658,13 +651,6 @@ table.stbl td:first-child{text-align:left;font-weight:500;}
     </div>
   </div>
 
-  <!-- Legacy duplicate score elements — hidden, kept only so renderOppScores() has somewhere to write -->
-  <div style="display:none;" aria-hidden="true">
-    <div class="score-side-label" id="score-opp-label2">Opponent</div>
-    <div id="score-away2">0</div>
-    <div class="score-side-label" id="home-score-label2">Home</div>
-    <div id="score-home2">0</div>
-  </div>
 
 </div><!-- /screen-game -->
 
@@ -682,6 +668,7 @@ table.stbl td:first-child{text-align:left;font-weight:500;}
 
 <!-- SEASON -->
 <div id="screen-season" class="screen">
+  <div id="sync-status-bar" style="display:none;background:var(--amber-bg);border:1.5px solid rgba(217,119,6,0.4);border-radius:var(--rs);padding:9px 14px;margin-bottom:8px;align-items:center;gap:10px;"><span style="font-size:12px;font-weight:700;color:var(--amber);" id="sync-status-label"></span><button class="btn btn-amber" style="padding:5px 12px;font-size:12px;margin-left:auto;" onclick="syncAllToCloud()">Sync now</button></div>
   <div id="season-record-bar" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;margin-bottom:10px;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
     <div style="font-size:13px;font-weight:700;color:var(--text);" id="wl-record">—</div>
     <div style="width:1px;height:20px;background:var(--border2);"></div>
@@ -1274,7 +1261,7 @@ function showApp(){
   document.getElementById('settings-season').value=state.config.season||'';
   document.getElementById('settings-sb-url').value=state.config.sbUrl||'';
   document.getElementById('settings-sb-key').value=state.config.sbKey||'';
-  document.getElementById('g-date').value=new Date().toISOString().split('T')[0];
+  // g-date intentionally blank: coding from replay, date is almost never today
   document.getElementById('g-time').value='18:00';
   renderStarterGrid();renderOppPreRoster();initGameFormat();setShotClock(isShotClock);
   if(state.currentGame){
@@ -1657,19 +1644,20 @@ function toggleOppPregameStarter(pid){
 function oppPreAdd(){
   const num=document.getElementById('opp-pre-num').value.trim();
   const name=document.getElementById('opp-pre-name').value.trim();if(!name)return;
-  pendingOppRoster.push({id:Date.now()+pendingOppRoster.length,num:num?'#'+num.replace('#',''):'-',name});
+  const _newOppP={id:Date.now()+pendingOppRoster.length,num:num?'#'+num.replace('#',''):'-',name};
+  pendingOppRoster.push(_newOppP);
+  if(state.currentGame&&!state.currentGame.ended){
+    state.currentGame.oppRoster.push(_newOppP);
+    state.currentGame.oppMinutes[_newOppP.id]=0;
+    state.currentGame.oppStats[_newOppP.id]=emptyOppPlayerStats();
+    showToast('\u2714 '+name+' added to live game');
+  }
   document.getElementById('opp-pre-num').value='';document.getElementById('opp-pre-name').value='';
   renderOppPreRoster();
 }
 
 // Tab switcher
-function setGameTab(tab){
-  // Legacy tab-switch entry point. Both team panels are now shown at once (split view),
-  // so this just keeps currentGameTab in sync and refreshes the opposition panel.
-  currentGameTab=tab;
-  if(state.currentGame)state.currentGame._uiTab=tab;
-  renderOppOnCourtSection();renderOppActionPanel();renderOppRosterTable();
-}
+function setGameTab(tab){currentGameTab=tab;if(state.currentGame)state.currentGame._uiTab=tab;}
 
 // Opposition on-court management
 function renderOppOnCourtSection(){
@@ -1748,13 +1736,7 @@ function renderOppRosterTable(){
   });
   tbody.appendChild(ttr);
 }
-function renderOppScores(){
-  const cg=state.currentGame;
-  const s2=document.getElementById('score-away2'),h2=document.getElementById('score-home2');
-  if(s2)s2.textContent=cg?cg.scoreAway:0;
-  if(h2)h2.textContent=cg?cg.scoreHome:0;
-  const lbl=document.getElementById('score-opp-label2');if(lbl&&cg)lbl.textContent=cg.opponent||'Opponent';
-}
+function renderOppScores(){/* legacy elements removed */}
 
 // Sub management
 function toggleOppPlayer(pid){
@@ -1762,15 +1744,18 @@ function toggleOppPlayer(pid){
   const idx=cg.oppOnCourt.indexOf(pid),isOn=idx!==-1;
   if(!isOn&&cg.oppOnCourt.length>=5){document.getElementById('warn5-opp').style.display='block';return;}
   const now=Date.now(),p=cg.oppRoster.find(p=>p.id===pid);
+  let minsCredited=0;
   if(isOn){
+    if(cg.running&&cg.oppStints[pid]){minsCredited=(now-cg.oppStints[pid])/60000;cg.oppMinutes[pid]=(cg.oppMinutes[pid]||0)+minsCredited;delete cg.oppStints[pid];}
     cg.oppOnCourt.splice(idx,1);
-    if(cg.running&&cg.oppStints[pid]){cg.oppMinutes[pid]=(cg.oppMinutes[pid]||0)+(now-cg.oppStints[pid])/60000;delete cg.oppStints[pid];}
     if(selectedOppPid===pid)selectedOppPid=null;
-    addEvent('opp_sub_off',{player:p?p.name:'?',pid:pid});
+    const tlId=addEvent('opp_sub_off',{player:p?p.name:'?',pid:pid});
+    oppActionLog.push({type:'opp_sub_off',pid,pts:0,tlId,subData:{minsCredited,wasRunning:cg.running}});
   } else {
     cg.oppOnCourt.push(pid);
     if(cg.running)cg.oppStints[pid]=now;
-    addEvent('opp_sub_on',{player:p?p.name:'?',pid:pid});
+    const tlId=addEvent('opp_sub_on',{player:p?p.name:'?',pid:pid});
+    oppActionLog.push({type:'opp_sub_on',pid,pts:0,tlId,subData:{wasRunning:cg.running}});
   }
   save();renderOppOnCourtSection();renderOppActionPanel();renderOppRosterTable();
 }
@@ -1804,12 +1789,35 @@ function logOppAction(type){
   renderLastActions(oppActionLog,'opp-last-actions-list',true);
   const _oppP=state.currentGame&&state.currentGame.oppRoster&&state.currentGame.oppRoster.find(p=>p.id===selectedOppPid);
   updateMasterLastAction((_oppP?_oppP.name:'Opp')+' — '+(type||''),true);
-  if(isShotAttemptType(type)&&!isUnknownShotType(type)){pendingShotOpp={pid:selectedOppPid,playerName:pn,playerNum:p?p.num:'',made:shotMadeForType(type),three:shotIsThreeForType(type),quarter:cg.quarter};}
+  if(isShotAttemptType(type)&&!isUnknownShotType(type)){
+    if(pendingShotOpp)showToast('\u26a0 Opp shot location not placed — overwritten');
+    pendingShotOpp={pid:selectedOppPid,playerName:pn,playerNum:p?p.num:'',made:shotMadeForType(type),three:shotIsThreeForType(type),quarter:cg.quarter};
+  }
   selectedOppPid=null;save();renderOppRosterTable();renderScores();renderOppScores();renderOppOnCourtSection();renderOppActionPanel();renderOppShotCapture();
 }
 function undoOppAction(){
   const cg=state.currentGame;if(!cg||!oppActionLog.length){renderLastActions([],'opp-last-actions-list',true);return;}
-  const last=oppActionLog.pop(),s=cg.oppStats[last.pid];
+  const last=oppActionLog.pop();
+  if(last.type==='opp_sub_off'){
+    const sd=last.subData||{};
+    cg.oppMinutes[last.pid]=Math.max(0,(cg.oppMinutes[last.pid]||0)-(sd.minsCredited||0));
+    cg.oppOnCourt.push(last.pid);
+    if(sd.wasRunning&&cg.running)cg.oppStints[last.pid]=Date.now();
+    removeTimelineEvent(cg,last.tlId,0,0);
+    const _op=cg.oppRoster&&cg.oppRoster.find(p=>p.id===last.pid);
+    updateMasterLastAction('Undone: '+(_op?_op.name:'Opp')+' sub-off reversed',true);
+    save();renderOppOnCourtSection();renderOppActionPanel();renderOppRosterTable();renderMasterLast5();return;
+  }
+  if(last.type==='opp_sub_on'){
+    const idx3=cg.oppOnCourt.indexOf(last.pid);
+    if(idx3!==-1)cg.oppOnCourt.splice(idx3,1);
+    if(cg.oppStints[last.pid]){const pm=(Date.now()-cg.oppStints[last.pid])/60000;cg.oppMinutes[last.pid]=Math.max(0,(cg.oppMinutes[last.pid]||0)-pm);delete cg.oppStints[last.pid];}
+    removeTimelineEvent(cg,last.tlId,0,0);
+    const _op2=cg.oppRoster&&cg.oppRoster.find(p=>p.id===last.pid);
+    updateMasterLastAction('Undone: '+(_op2?_op2.name:'Opp')+' sub-on reversed',true);
+    save();renderOppOnCourtSection();renderOppActionPanel();renderOppRosterTable();renderMasterLast5();return;
+  }
+  const s=cg.oppStats[last.pid];
   if(last.type==='1pt'){if(s.ftm>0)s.ftm--;if(s.fta>0)s.fta--;s.pts=Math.max(0,s.pts-last.pts);cg.scoreAway=Math.max(0,cg.scoreAway-last.pts);}
   else if(last.type==='2pt'){if(s.fgm>0)s.fgm--;if(s.fga>0)s.fga--;s.pts=Math.max(0,s.pts-last.pts);cg.scoreAway=Math.max(0,cg.scoreAway-last.pts);}
   else if(last.type==='3pt'){if(s.fgm>0)s.fgm--;if(s.fga>0)s.fga--;if((s.fgm3||0)>0)s.fgm3--;if((s.fga3||0)>0)s.fga3--;s.pts=Math.max(0,s.pts-last.pts);cg.scoreAway=Math.max(0,cg.scoreAway-last.pts);}
@@ -1864,7 +1872,14 @@ function loadSavedOppRoster(){
 }
 function startGame(){
   document.getElementById('warn-starters').style.display='none';
-  if(pendingStarters.size===0){document.getElementById('warn-starters').style.display='block';return;}
+  if(pendingStarters.size<5){
+    const wEl=document.getElementById('warn-starters');
+    if(wEl){wEl.style.display='block';wEl.textContent=pendingStarters.size===0?
+      '\u26a0 Select 5 starters before starting the game':
+      '\u26a0 Only '+pendingStarters.size+'/5 starters selected.';}
+    if(pendingStarters.size===0)return;
+    if(!confirm('Only '+pendingStarters.size+' starters selected. Start anyway?'))return;
+  }
   const date=document.getElementById('g-date').value,time=document.getElementById('g-time').value;
   const round=document.getElementById('g-round').value.trim(),opp=document.getElementById('g-opp').value.trim();
   const venue=document.getElementById('g-venue').value.trim(),gameType=currentGameType,periodSecs=getQSecs();
@@ -1911,19 +1926,6 @@ function callTimeout(team){
   cg.timeout=true;cg.timeoutTeam=team==='home'?(state.config.clubName||'Home'):'Opposition';
   addEvent(team==='home'?'timeout':'opp_timeout',{team:cg.timeoutTeam});save();render();
 }
-function resetQClock(){
-  const cg=state.currentGame;if(!cg)return;
-  const wasRunning=cg.running;
-  if(wasRunning)pauseInternal();  // bank current stints
-  cg.qRemaining=cg.periodSecs||Q_SECS_REP;
-  if(wasRunning){
-    cg.running=true;const now=Date.now();cg.lastTick=now;
-    cg.onCourt.forEach(pid=>{cg.stints[pid]=now;});
-    if(cg.oppOnCourt)cg.oppOnCourt.forEach(pid=>{cg.oppStints[pid]=now;});
-    startTimer();
-  }
-  save();renderTimer();
-}
 function setClockManual(){
   const cg=state.currentGame;if(!cg)return;
   const oldRemaining=cg.qRemaining;
@@ -1967,6 +1969,10 @@ function resetClock(){
 }
 function setQuarter(q){
   const cg=state.currentGame;if(!cg)return;
+  if(q!==cg.quarter){
+    const dir=q>cg.quarter?'Advance to Q'+q:'Go back to Q'+q+' (resets quarter clock)';
+    if(!confirm(dir+'?'))return;
+  }
   const wasRunning=cg.running;
   if(wasRunning)pauseInternal();
   if(q>cg.quarter){const tl=cg.timeline||[];const lastEv=tl.length?tl[tl.length-1]:null;if(!(lastEv&&lastEv.type==='qend'&&lastEv.q===cg.quarter))addEvent('qend',{});}
@@ -1980,7 +1986,18 @@ function setQuarter(q){
   save();renderStatus();renderTimer();renderPeriodBar(cg);refreshInlineShotDots();
 }
 function endGame(){
-  const cg=state.currentGame;if(!cg)return;if(!confirm('End game and save to season?'))return;
+  const cg=state.currentGame;if(!cg)return;
+  if(!confirm('End game and save to season?'))return;
+  const _hS=parseInt(prompt((state.config.clubName||'Home')+' final score (CourtTrack: '+cg.scoreHome+')',String(cg.scoreHome)),10);
+  if(isNaN(_hS)){showToast('\u26a0 Cancelled — enter final score to end game');return;}
+  const _aS=parseInt(prompt((cg.opponent||'Opposition')+' final score (CourtTrack: '+cg.scoreAway+')',String(cg.scoreAway)),10);
+  if(isNaN(_aS)){showToast('\u26a0 Cancelled — enter final score to end game');return;}
+  if(_hS!==cg.scoreHome||_aS!==cg.scoreAway){
+    const _d=Math.abs(_hS-cg.scoreHome)+Math.abs(_aS-cg.scoreAway);
+    if(!confirm('Score mismatch! CourtTrack: '+cg.scoreHome+'-'+cg.scoreAway+' | Actual: '+_hS+'-'+_aS+'. Save with actual scores?'))return;
+    cg.scoreHome=_hS;cg.scoreAway=_aS;
+    showToast('\u26a0 Scores adjusted '+_d+' pts — check timeline');
+  }
   pauseInternal();cg.ended=true;cg.running=false;cg.timeout=false;cg.onCourt=[];if(cg.oppOnCourt)cg.oppOnCourt=[];
   if(wakeLock&&wakeLock.release){wakeLock.release().catch(()=>{});wakeLock=null;}
   const pc=cg.gameType==='domestic'?2:4;cg.totalGameMins=(cg.periodSecs||Q_SECS_REP)/60*pc;
@@ -1994,7 +2011,8 @@ function endGame(){
   cg.oppSummary=oppSum;
   const saved={...cg};state.games.push(saved);state.games.sort((a,b)=>parseDateStr(b.date)-parseDateStr(a.date));
   state.currentGame=null;actionLog=[];oppScoreLog=[];oppActionLog=[];oppStatLog=[];selectedPid=null;selectedOppPid=null;pendingShotHome=null;pendingShotOpp=null;pendingStarters=new Set();pendingOppRoster=[];pendingOppStarters=new Set();currentGameTab='home';isFilmed=true;isShotClock=DEFAULT_SHOT_CLOCK;const _pm=document.getElementById('g-period-mins');if(_pm)_pm.value=String(DEFAULT_PERIOD_MINS);updateVjblFormatLabel();
-  save();render();renderStarterGrid();renderOppPreRoster();showScreen('season',document.getElementById('tab-btn-season'));
+  markGameUnsynced(String(saved.id));
+  save();render();renderStarterGrid();renderOppPreRoster();showScreen('season',document.getElementById('tab-btn-season'));updateSyncStatusBar();
   if(sbOk())syncGameToCloud(saved);
 }
 function parseDateStr(d){if(!d)return 0;try{const p=d.split('/');return new Date(p[2]+'-'+p[1]+'-'+p[0]).getTime();}catch(e){return 0;}}
@@ -2005,8 +2023,19 @@ function togglePlayer(pid){
   const idx=cg.onCourt.indexOf(pid),isOn=idx!==-1;
   if(!isOn&&cg.onCourt.length>=5){document.getElementById('warn5').style.display='block';return;}
   const now=Date.now(),p=state.players.find(p=>p.id===pid);
-  if(isOn){cg.onCourt.splice(idx,1);if(cg.running&&cg.stints[pid]){cg.minutes[pid]=(cg.minutes[pid]||0)+(now-cg.stints[pid])/60000;delete cg.stints[pid];}if(selectedPid===pid)selectedPid=null;addEvent('sub_off',{player:p?p.name:'?',pid:pid});}
-  else{cg.onCourt.push(pid);if(cg.running)cg.stints[pid]=now;addEvent('sub_on',{player:p?p.name:'?',pid:pid});}
+  let minsCredited=0;
+  if(isOn){
+    if(cg.running&&cg.stints[pid]){minsCredited=(now-cg.stints[pid])/60000;cg.minutes[pid]=(cg.minutes[pid]||0)+minsCredited;delete cg.stints[pid];}
+    cg.onCourt.splice(idx,1);
+    if(selectedPid===pid)selectedPid=null;
+    const tlId=addEvent('sub_off',{player:p?p.name:'?',pid:pid});
+    actionLog.push({type:'sub_off',pid,pts:0,tlId,subData:{minsCredited,wasRunning:cg.running}});
+  } else {
+    cg.onCourt.push(pid);
+    if(cg.running)cg.stints[pid]=now;
+    const tlId=addEvent('sub_on',{player:p?p.name:'?',pid:pid});
+    actionLog.push({type:'sub_on',pid,pts:0,tlId,subData:{wasRunning:cg.running}});
+  }
   save();renderOnCourtSection();renderActionPanel();renderRosterTable();renderStatus();
 }
 function selectPlayer(pid){selectedPid=(selectedPid===pid)?null:pid;renderOnCourtSection();renderActionPanel();}
@@ -2078,7 +2107,10 @@ function logAction(type){
   actionLog.push({pid:selectedPid,type,pts,tlId});
   renderMasterLast5();
   updateMasterLastAction((state.players.find(p=>p.id===selectedPid)?.name||'?')+' — '+(lbls[type]||type),false);
-  if(isShotAttemptType(type)&&!isUnknownShotType(type)){pendingShotHome={pid:selectedPid,playerName:pn,playerNum:p?p.num:'',made:shotMadeForType(type),three:shotIsThreeForType(type),quarter:cg.quarter};}
+  if(isShotAttemptType(type)&&!isUnknownShotType(type)){
+    if(pendingShotHome)showToast('\u26a0 Home shot location not placed — overwritten');
+    pendingShotHome={pid:selectedPid,playerName:pn,playerNum:p?p.num:'',made:shotMadeForType(type),three:shotIsThreeForType(type),quarter:cg.quarter};
+  }
   selectedPid=null;save();renderRosterTable();renderScores();renderOnCourtSection();renderActionPanel();renderHomeShotCapture();
 }
 function renderMasterLast5(){
@@ -2177,7 +2209,27 @@ function removeTimelineEvent(cg,tlId,dHome,dAway){
 }
 function undoAction(){
   const cg=state.currentGame;if(!cg||!actionLog.length){document.getElementById('last-action').textContent='Nothing to undo.';return;}
-  const last=actionLog.pop(),s=cg.stats[last.pid];
+  const last=actionLog.pop();
+  if(last.type==='sub_off'){
+    const sd=last.subData||{};
+    cg.minutes[last.pid]=Math.max(0,(cg.minutes[last.pid]||0)-(sd.minsCredited||0));
+    cg.onCourt.push(last.pid);
+    if(sd.wasRunning&&cg.running)cg.stints[last.pid]=Date.now();
+    removeTimelineEvent(cg,last.tlId,0,0);
+    const _sp=state.players.find(p=>p.id===last.pid);
+    updateMasterLastAction('Undone: '+(_sp?_sp.name:'?')+' sub-off reversed',false);
+    save();renderOnCourtSection();renderActionPanel();renderRosterTable();renderStatus();renderMasterLast5();return;
+  }
+  if(last.type==='sub_on'){
+    const idx2=cg.onCourt.indexOf(last.pid);
+    if(idx2!==-1)cg.onCourt.splice(idx2,1);
+    if(cg.stints[last.pid]){const pm=(Date.now()-cg.stints[last.pid])/60000;cg.minutes[last.pid]=Math.max(0,(cg.minutes[last.pid]||0)-pm);delete cg.stints[last.pid];}
+    removeTimelineEvent(cg,last.tlId,0,0);
+    const _sp2=state.players.find(p=>p.id===last.pid);
+    updateMasterLastAction('Undone: '+(_sp2?_sp2.name:'?')+' sub-on reversed',false);
+    save();renderOnCourtSection();renderActionPanel();renderRosterTable();renderStatus();renderMasterLast5();return;
+  }
+  const s=cg.stats[last.pid];
   if(last.type==='1pt'){if(s.ftm>0)s.ftm--;if(s.fta>0)s.fta--;s.pts=Math.max(0,s.pts-last.pts);cg.scoreHome=Math.max(0,cg.scoreHome-last.pts);}
   else if(last.type==='2pt'){if(s.fgm>0)s.fgm--;if(s.fga>0)s.fga--;s.pts=Math.max(0,s.pts-last.pts);cg.scoreHome=Math.max(0,cg.scoreHome-last.pts);}
   else if(last.type==='3pt'){if(s.fgm>0)s.fgm--;if(s.fga>0)s.fga--;if((s.fgm3||0)>0)s.fgm3--;if((s.fga3||0)>0)s.fga3--;s.pts=Math.max(0,s.pts-last.pts);cg.scoreHome=Math.max(0,cg.scoreHome-last.pts);}
@@ -3299,7 +3351,34 @@ function clearAll(){if(!confirm('Clear all game data? Squad will be kept.'))retu
 // ── DATA / CLOUD ──────────────────────────────────────
 function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='courttrack_backup_'+new Date().toISOString().split('T')[0]+'.json';a.click();URL.revokeObjectURL(url);}
 function importData(e){const file=e.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.players)throw new Error();if(!confirm('Replace all current data?'))return;if(d._starters){pendingStarters=new Set(d._starters.map(Number));delete d._starters;}state=d;if(!state.config)state.config=defaultConfig();save();showApp();render();renderStarterGrid();alert('Restored.');}catch(err){alert('Invalid backup file.');}};reader.readAsText(file);e.target.value='';}
-async function syncGameToCloud(game){try{const r=await sbSaveGame(game);if(r!==null)showToast('✓ Saved to cloud');else showToast('⚠ Cloud sync failed');}catch(e){showToast('⚠ Cloud sync failed');}}
+async function syncGameToCloud(game){
+  try{const r=await sbSaveGame(game);
+  if(r!==null){showToast('\u2713 Saved to cloud');markGameSynced(String(game.id));}
+  else showToast('\u26a0 Cloud sync failed — use Sync now on Season tab');
+  }catch(e){showToast('\u26a0 Cloud sync error — use Sync now on Season tab');}
+  if(typeof updateSyncStatusBar==='function')updateSyncStatusBar();
+}
+function markGameUnsynced(gameId){
+  try{const k=APP_KEY+'_unsynced',arr=JSON.parse(localStorage.getItem(k)||'[]');
+  if(!arr.includes(String(gameId)))arr.push(String(gameId));
+  localStorage.setItem(k,JSON.stringify(arr));}catch(e){}}
+function markGameSynced(gameId){
+  try{const k=APP_KEY+'_unsynced',arr=JSON.parse(localStorage.getItem(k)||'[]');
+  localStorage.setItem(k,JSON.stringify(arr.filter(id=>id!==String(gameId))));}catch(e){}}
+function updateSyncStatusBar(){
+  const bar=document.getElementById('sync-status-bar'),lbl=document.getElementById('sync-status-label');
+  if(!bar||!lbl)return;if(!sbOk()){bar.style.display='none';return;}
+  try{const ids=JSON.parse(localStorage.getItem(APP_KEY+'_unsynced')||'[]');
+  if(!ids.length){bar.style.display='none';return;}
+  bar.style.display='flex';
+  lbl.textContent='\u26a0 '+ids.length+' game'+(ids.length===1?'':'s')+' not confirmed synced to cloud';
+  }catch(e){bar.style.display='none';}}
+async function syncAllToCloud(){
+  if(!sbOk()){showToast('\u26a0 No cloud credentials configured');return;}
+  showToast('Syncing...');let ok=0,fail=0;
+  for(const g of state.games){const r=await sbSaveGame(g);
+  if(r!==null){ok++;markGameSynced(String(g.id));}else fail++;}
+  updateSyncStatusBar();showToast(ok+' synced'+(fail?' — '+fail+' failed':''));}
 function autoRemapPlayerIds(cloudGames){
   // Find a game with summary data to detect what IDs the cloud uses
   const sampleGame=cloudGames.find(g=>g.summary&&g.summary.stats);
